@@ -2,6 +2,8 @@ from cat.mad_hatter.decorators import endpoint
 from fastapi import HTTPException
 import json
 import os
+from pydantic import BaseModel
+from typing import List
 
 # Modifica cruciale: percorso alternativo per i file statici
 try:
@@ -16,6 +18,10 @@ try:
 except Exception as e:
     print(f"Errore nel calcolo dei percorsi: {str(e)}")
     raise
+
+# Define a Pydantic model for the tags list
+class TagsList(BaseModel):
+    tags: List[str]
 
 # Endpoint per user_status.json
 @endpoint.get("/user-status")
@@ -49,10 +55,11 @@ def get_tags():
         raise HTTPException(status_code=500, detail=f"JSON non valido: {str(e)}")
 
 @endpoint.post("/tags")
-def update_tags(new_data: dict):
+def update_tags(tags_data: TagsList):
     try:
         with open(tags_path, "w") as f:
-            json.dump(new_data, f, indent=4)
+            # Save the entire tags object instead of just the list
+            json.dump({"tags": tags_data.tags}, f, indent=4)
         return {"status": "success", "message": "tags.json aggiornato con successo"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -13,7 +13,9 @@ def aggiorna_users_tags():
     # Carica i tag dal file JSON
     tags_file = Path("cat/static/tags.json")
     with tags_file.open("r", encoding="utf-8") as f:
-        tags = json.load(f)
+        tags_data = json.load(f)
+        # Extract the tags array from the object
+        tags = tags_data.get("tags", [])
 
     # Crea il dizionario base dei tag
     base_tags_dict = {tag: False for tag in tags}
