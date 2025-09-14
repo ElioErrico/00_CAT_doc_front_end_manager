@@ -90,28 +90,31 @@ def _load_tags_list() -> List[str]:
     # normalizza a lista di stringhe (accetta int, converte a str)
     return [str(t) for t in tags if isinstance(t, (str, int))]
 
+def _ensure_tag_fields(t: dict) -> dict:
+    if not isinstance(t, dict):
+        return _default_tag_obj()
+    t.setdefault("status", bool(t.get("status", False)))
+    t.setdefault("documents", t.get("documents", []) if isinstance(t.get("documents"), list) else [])
+    t.setdefault("prompt_list", t.get("prompt_list", []) if isinstance(t.get("prompt_list"), list) else [])
+    t.setdefault("selected_prompt", t.get("selected_prompt", "") or "")
+    t.setdefault("prompt", t.get("prompt", "") or "")
+    return t
 
-def _ensure_user_status_schema(user_status: dict, tags: List[str]) -> dict:
+def _ensure_user_status_schema(user_status: dict, tags: list[str]) -> dict:
     """
-    Porta lo schema alla forma: user -> tag -> tag_obj completo.
-    Non rimuove tag “extra”, integra solo i mancanti.
+    Normalizza SOLO i tag già presenti per ciascun utente.
+    NON aggiunge tag mancanti presi da tags.json.
     """
     for user, tagmap in list(user_status.items()):
         if not isinstance(tagmap, dict):
             user_status[user] = {}
             tagmap = user_status[user]
 
-        for tag in tags:
-            if tag not in tagmap or not isinstance(tagmap.get(tag), dict):
-                tagmap[tag] = _default_tag_obj()
-            else:
-                t = tagmap[tag]
-                if "status" not in t:           t["status"] = bool(t.get("status", False))
-                if "documents" not in t:        t["documents"] = t.get("documents", [])
-                if "prompt_list" not in t:      t["prompt_list"] = t.get("prompt_list", [])
-                if "selected_prompt" not in t:  t["selected_prompt"] = t.get("selected_prompt", "")
-                if "prompt" not in t:           t["prompt"] = t.get("prompt", "")
+        for tag, obj in list(tagmap.items()):
+            tagmap[tag] = _ensure_tag_fields(obj)
+
     return user_status
+
 
 
 def _load_user_status_with_schema() -> dict:
@@ -219,30 +222,54 @@ def _merge_sources_for_user_atomic(user: str, active_tags: List[str], sources: L
     _update_user_status_atomic(mutator)
 
 
-# === Hook: prefix dinamico (usa SOLO selected_prompt) ===
 @hook
 def agent_prompt_prefix(prefix, cat):
     """
-    Sostituisce il prefix con il primo selected_prompt dei tag attivi dell'utente.
-    - considera i tag con status=True;
-    - usa solo selected_prompt (vedi _resolve_selected_prompt);
-    - se non trovato/null, mantiene il prefix originale.
+    - Se 'Cheshire' è già nel prefix originale:
+        usa normalmente il primo selected_prompt valido (o il default).
+    - Se 'Cheshire' NON è nel prefix originale:
+        concatena il prefix originale con il risultato trovato (resolved o default).
     """
+
+    default_prefix = "Rispondi alle domande dell'utente"
+
+    # cat.send_ws_message(f"Prefix iniziale: {prefix}", "chat")
+
     try:
         user = cat.user_id
     except Exception:
-        return prefix
+        resolved = default_prefix
+    else:
+        user_status = _load_user_status_with_schema()
+        tags_for_user = user_status.get(user, {})
 
-    user_status = _load_user_status_with_schema()
-    tags_for_user = user_status.get(user, {})
+        resolved = None
+        for _, tag_obj in tags_for_user.items():
+            if isinstance(tag_obj, dict) and tag_obj.get("status", False):
+                candidate = _resolve_selected_prompt(tag_obj)
+                if candidate:
+                    # cat.send_ws_message(f"Prefix scelto da tag: {candidate}", "chat")
+                    resolved = candidate
+                    break
 
-    # Ordine naturale del dict (inserimento)
-    for _, tag_obj in tags_for_user.items():
-        if isinstance(tag_obj, dict) and tag_obj.get("status", False):
-            resolved = _resolve_selected_prompt(tag_obj)
-            if resolved:
-                return resolved
-    return prefix
+        if not resolved:
+            resolved = default_prefix
+            # cat.send_ws_message(f"Nessun tag attivo, uso default: {default_prefix}", "chat")
+
+    # Se "Cheshire" non è nel prefix originale → concatena
+    if "Cheshire" not in prefix:
+        # CONCATENAZIONE DEL SYSTEM PROMPT DEL REACT AGENT CON IL SYSTEM PROMPT DI COMPORTAMENTO SELEZIONATO
+        #TODO MIGLIORARE IL PROMPT COMPLESSIVO
+        final_prefix = f"{prefix}\n\n{resolved}"
+    else:
+        final_prefix = resolved
+
+    # cat.send_ws_message(f"tHE FINAL ONE: {final_prefix}", "chat")
+
+    return final_prefix
+
+
+
 
 
 # === Hook: metadati per recall (solo tag attivi + flag utente) ===
