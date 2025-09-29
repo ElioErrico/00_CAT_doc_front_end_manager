@@ -222,7 +222,7 @@ def _merge_sources_for_user_atomic(user: str, active_tags: List[str], sources: L
     _update_user_status_atomic(mutator)
 
 
-@hook
+@hook (priority=3)
 def agent_prompt_prefix(prefix, cat):
     """
     - Se 'Cheshire' è già nel prefix originale:
@@ -319,20 +319,20 @@ def before_rabbithole_stores_documents(docs, cat):
     metadata_for_upload[user] = True
 
     # DEBUG
-    # cat.send_ws_message(f"[DBG] user={user}", "chat")
-    # cat.send_ws_message(f"[DBG] active_tags={active_tags}", "chat")
+    #cat.send_ws_message(f"[DBG] user={user}", "chat")
+    #cat.send_ws_message(f"[DBG] active_tags={active_tags}", "chat")
 
     for doc in docs:
         current = dict(getattr(doc, "metadata", {}) or {})
         current.update(metadata_for_upload)
         doc.metadata = current
-        # cat.send_ws_message(f"{str(doc.metadata)}", "chat")
+        #cat.send_ws_message(f"{str(doc.metadata)}", "chat")
 
         s = current.get("source")
         if not (isinstance(s, str) and s.strip()):
             continue
         s = Path(s.strip()).name  # FIX: salva sempre basename
-        # cat.send_ws_message(f"{s}", "chat")
+        #cat.send_ws_message(f"{s}", "chat")
 
         def mutator(state: dict):
             user_map = state.setdefault(user, {})
